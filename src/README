@@ -1,0 +1,58 @@
+1. Configurable options:
+
+1.1 Legacy options:
+
+http://vsftpd.beasts.org/vsftpd_conf.html
+
+1.2 New options:
+
+1.2.1. ssl_user_auth_cert
+If set to YES, the server will determine the FTP user from the authenticated client certificate for FTP over TLS connection.
+The client certificate should has the subjectAltName extension which type should be DirectoryName or Othername.
+The username is extracted from the subjectAltName extension and is used for login, it will be crosschecked with the FTP user provided by the client when ssl_crosscheck_username is YES and a mismatch will fail the session.
+No password is requested from the client.
+
+Default: NO
+Note: The username extraction behavior is same as COM TLSD
+
+1.2.2. ssl_crosscheck_username
+If set to YES, the server will crosscheck username extracted from client certificate with the FTP user provided by the client in case of FTP over TLS connection. A mismatch will fail the session.
+
+Default: NO
+
+
+2. Installation steps
+
+2.1 Install com-vsftpd-<version>-<release>.<architecture>.rpm
+    -> rpm --install <rpm>
+
+2.2 Copy /opt/com-vsftpd/etc/pam.d/com-vsftpd to /etc/pam.d/com-vsftpd
+    -> cp /opt/com-vsftpd/etc/pam.d/com-vsftpd /etc/pam.d/com-vsftpd
+
+2.3 Create directory /usr/share/empty if not exists
+    -> mkdir -p /usr/share/empty
+
+2.4 For running  in standalone mode create a template file using the
+reference file /opt/com-vsftpd/etc/com-vsftpd.conf and update the config
+values especially the parameters shown below,and provide the temp file
+path to com-vsftpd deamon path as shown in 3.1:
+
+pasv_min_port=12000
+pasv_max_port=12100
+listen_port=21
+ca_certs_file=/cluster/com-vsftpd/certs/client-cacert.pem
+rsa_cert_file=/cluster/com-vsftpd/certs/com-vsftpd-cert.pem
+rsa_private_key_file=/cluster/com-vsftpd/certs/com-vsftpd-key.pem
+
+ssl_user_auth_cert=YES
+ssl_crosscheck_username=YES
+local_root=/var/filem/nbi_root
+
+pasv_enable=YES
+listen=YES
+implicit_ssl=NO
+
+3. Execution cmd
+
+3.1 Standalone mode:
+/opt/com-vsftpd/bin/com-vsftpd /opt/com-vsftpd/etc/com-vsftpd.conf &

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Produce a comprehensive human-readable list of all changes
+# Between the initial commit and HEAD, on the current branch
+#
+# You may use this to communicate change-lists in compliance with GPLv2
+
+ROOT_COMMIT=`git rev-list HEAD | tail -n 1`
+EXCLUDE_LIST="builddefs.h" # These files are not relevant for the patch list
+FILE_LIST=`git diff $ROOT_COMMIT..HEAD  --name-only  -- *.c *.h | grep -v $EXCLUDE_LIST`
+
+git diff $ROOT_COMMIT..HEAD -- $FILE_LIST

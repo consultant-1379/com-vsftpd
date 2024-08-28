@@ -1,0 +1,42 @@
+Name:         %{_comvsftpdname}
+License:      GPL
+Group:        Applications/System
+Version:      %{_comvsftpdver}
+Release:      %{_comvsftpdrel}
+Summary:      VSFTPD for COM
+URL:          http://www.ericsson.com
+Vendor:       Ericsson AB
+
+%define com_vsftpd_daemon_filename %(basename ${COM_VSFTPD_DAEMON})
+%define com_vsftpd_start_filename %(basename ${COM_VSFTPD_START})
+%define com_vsftpd_config_filename %(basename ${COM_VSFTPD_CONFIG})
+%define com_vsftpd_pam_filename %(basename ${COM_VSFTPD_PAM})
+
+%global __requires_exclude ^.*\(OPENSSL_1\.0\.0\).*$
+
+%description
+Daemon for FTP over TLS, based on vsftp.
+
+%post
+chgrp 319 /@COM_VSFTPD_INSTALL_PREFIX@/run/
+
+%build
+install -d $RPM_BUILD_ROOT/
+install -d $RPM_BUILD_ROOT/@COM_VSFTPD_INSTALL_PREFIX@/etc
+install -d $RPM_BUILD_ROOT/@COM_VSFTPD_INSTALL_PREFIX@/bin
+install -d $RPM_BUILD_ROOT/@COM_VSFTPD_INSTALL_PREFIX@/run/
+install -d $RPM_BUILD_ROOT/etc/pam.d/
+install -d $RPM_BUILD_ROOT/usr/share/empty/
+install -m 750 $COM_VSFTPD_DAEMON $RPM_BUILD_ROOT/@COM_VSFTPD_INSTALL_PREFIX@/bin/
+install -m 750 $COM_VSFTPD_START $RPM_BUILD_ROOT/@COM_VSFTPD_INSTALL_PREFIX@/bin/
+install -m 640 $COM_VSFTPD_CONFIG $RPM_BUILD_ROOT/@COM_VSFTPD_INSTALL_PREFIX@/etc/
+install -m 640 $COM_VSFTPD_PAM $RPM_BUILD_ROOT/etc/pam.d/
+
+%files
+@COM_VSFTPD_INSTALL_PREFIX@/bin/com-vsftpd
+@COM_VSFTPD_INSTALL_PREFIX@/bin/com-vsftpd.sh
+@COM_VSFTPD_INSTALL_PREFIX@/etc/com-vsftpd.conf
+%dir %attr(770, root, root) @COM_VSFTPD_INSTALL_PREFIX@/run/
+%dir /usr/share/empty/
+%defattr(-,root,root,-)
+%config(noreplace) /etc/pam.d/%{com_vsftpd_pam_filename}

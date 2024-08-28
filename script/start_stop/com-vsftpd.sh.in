@@ -1,0 +1,211 @@
+#!/bin/bash
+#
+# Copyright (C) 2018 by Ericsson AB
+#
+# The copyright to the computer program herein is the property of
+# Ericsson AB. The program may be used and/or copied only with the
+# written permission from Ericsson AB, or in accordance with the terms
+# and conditions stipulated in the agreement/contract under which the
+# program has been supplied.
+#
+# All rights reserved.
+# The script enables number of com-vsftpd process management capabilities.
+#
+
+SELF_NAME="$(basename "$0")"
+
+SUCCESS=0
+ERROR=1
+
+# Enabling debug logs to syslog 0=disabled , 1=enabled (error logs will always be written to syslog).
+DO_SYSLOG=0
+
+COMEA_ROOT_DIR="@COM_INSTALL_PREFIX@/comea"
+
+# double-check for comea root folder
+if [ -z "${COMEA_ROOT_DIR}" ]; then
+   COMEA_ROOT_DIR="/opt/com/comea"
+fi
+
+COM_VSFTPD_ROOT_DIR="@COM_VSFTPD_INSTALL_PREFIX@"
+
+# double-check for com-vsftpd root folder
+if [ -z "${COM_VSFTPD_ROOT_DIR}" ]; then
+   COM_VSFTPD_ROOT_DIR="/opt/com-vsftpd"
+fi
+
+# This function logs debug messages to syslog if DO_SYSLOG flag is enabled.
+syslog_debug_message() {
+   if [ $DO_SYSLOG -eq 1 ]; then
+      logger -p local0.debug -t "$SELF_NAME[$$]" "$*"
+   fi
+}
+
+# This function logs error messages to syslog and stderr.
+syslog_error_message() {
+   echo "ERROR $*" >&2
+   logger -p local0.err -t "$SELF_NAME[$$]" "$*"
+}
+
+fake_run() {
+   syslog_debug_message "Enter fake_run()"
+   if [ ! -f "$AMF_HANDLES_VSFTPD_FILE" ];
+   then
+      syslog_debug_message "Exit fake_run() with no AMF_HANDLE file"
+      return 0  # configuration files does not exist yet
+   fi
+   syslog_debug_message "Exit fake_run() with AMF handle file:$AMF_HANDLES_VSFTPD_FILE"
+   return 1
+}
+
+# Will return the pid originally started and stored in pid file,
+# or "0" if not running anymore.
+get_main_pid() {
+   syslog_debug_message "Enter get_main_pid()"
+   if [ -f "$PID_FILE" ];
+   then
+      running_pid=$(cat "${PID_FILE}")
+      pids=$(ps haxocomm,pid | awk '$1==pname{print $2}' pname=com-vsftpd)
+      for pid_val in $pids
+      do
+         if [ "$pid_val" == "$running_pid" ]
+         then
+            echo "$pid_val"
+            syslog_debug_message "Exit get_main_pid() with pid:$pid_val"
+            return
+         fi
+      done
+   fi
+   echo 0
+   syslog_debug_message "Exit get_main_pid()"
+}
+
+is_process_running() {
+   syslog_debug_message "Enter is_process_running()"
+   COM_VSFTPD_PID="$(get_main_pid)"
+   if [ "$COM_VSFTPD_PID" -eq 0 ];
+   then
+      syslog_debug_message "Exit is_process_running() as com-vsftp daemon process is not running"
+      return 1
+   fi
+   syslog_debug_message "Exit is_process_running() with com-vsftp daemon process PID:$COM_VSFTPD_PID"
+   return 0
+}
+
+stop() {
+   syslog_debug_message "Enter stop()"
+   if is_process_running
+   then
+      kill -9 "$COM_VSFTPD_PID"
+      RETVAL=$?
+      if [ "${RETVAL}" -ne 0 ]
+      then
+         syslog_error_message "com-vsftpd failed to be stopped with RETVAL:${RETVAL}"
+      else
+         syslog_debug_message "com-vsftpd daemon process (PID:$COM_VSFTPD_PID) successfully stopped"
+         rm -f "$PID_FILE"
+         rm -f "$COM_VSFTPD_CONF_FILE"
+         rm -f "$AMF_HANDLES_VSFTPD_FILE"
+      fi
+      syslog_debug_message "Exit stop() with return value:$RETVAL"
+      return $RETVAL
+   fi
+   syslog_debug_message "Exit stop() with return value:$SUCCESS"
+   return $SUCCESS
+}
+
+start() {
+   syslog_debug_message "Enter start()"
+   if is_process_running
+   then
+      kill -9 "$COM_VSFTPD_PID"
+   fi
+
+   audit_stream_check
+
+   # start vsftpd
+   ${COM_VSFTPD_CMD} "${COM_VSFTPD_CONF_FILE}" 2>&1 &
+   EXIT_CODE=$?
+   COM_VSFTPD_PID=$!
+   if [ "${EXIT_CODE}" -eq 0 ]
+   then
+      if [ "$COM_VSFTPD_PID" != "" ]
+      then
+         echo $COM_VSFTPD_PID > "${PID_FILE}"
+         syslog_debug_message "com-vsftpd daemon process (PID: $COM_VSFTPD_PID) successfully started with configuration: ${COM_VSFTPD_CONF_FILE}"
+      else
+         syslog_error_message "com-vsftpd daemon process failed to start as no pid created"
+      fi
+   else
+       syslog_error_message "com-vsftpd daemon process failed to start with exit code:$EXIT_CODE"
+   fi
+   syslog_debug_message "Exit start() with return value:$EXIT_CODE"
+   exit $EXIT_CODE
+}
+
+lock_file_exists() {
+   syslog_debug_message "Enter lock_file_exists()"
+   LOCK_FILE="${VSFTP_RUN_PATH}/vsftp.lock"
+   if [ -f "$LOCK_FILE" ]; then
+      syslog_debug_message "Exit lock_file_exists() with file:$LOCK_FILE"
+      return $SUCCESS
+   else
+      syslog_debug_message "Exit lock_file_exists() with no lock file"
+      return $ERROR
+   fi
+   syslog_debug_message "Exit lock_file_exists()"
+}
+
+audit_stream_check() {
+    SECURITY_STREAM_PATH="/etc/syslog-logstream.d/01-lde-syslog-logstream-list.conf"
+
+    if [ -f "$SECURITY_STREAM_PATH" ]; then
+        if grep -q "security_audit:" "$SECURITY_STREAM_PATH"; then
+            export SECURITY_STREAM=1
+            info "security_audit stream is available"
+        fi
+    fi
+}
+
+COM_VSFTPD_CMD="${COM_VSFTPD_ROOT_DIR}/bin/com-vsftpd"
+# shellcheck disable=SC1090
+COM_VSFTPD_CONF_FILE=$(source "${COMEA_ROOT_DIR}/bin/comea" vsftpd get-config-file-path) #returns com-vsftpd configuration file
+VSFTP_RUN_PATH="$(dirname "$COM_VSFTPD_CONF_FILE")"
+PID_FILE="${VSFTP_RUN_PATH}/com-vsftpd.pid"
+AMF_HANDLES_VSFTPD_FILE="${VSFTP_RUN_PATH}/AMF_handles_VSFTPD"
+
+case "$1" in
+   start)
+      if ! fake_run
+      then
+         start
+      fi
+      ;;
+   stop)
+      stop
+      ;;
+   restart)
+      stop
+      if ! fake_run
+      then
+         start
+      fi
+      ;;
+   status)
+      if ! fake_run
+      then
+         #return success if the vsftp daemon process is running or is in restarting
+         #phase due to updated config file done by vsftpd manager
+         if ! is_process_running && ! lock_file_exists
+         then
+            syslog_error_message "No com-vsftp daemon process running, restarting com-vsftpd"
+            exit $ERROR
+         fi
+      fi
+      ;;
+   *)
+      echo "Invalid command: $0 $*"
+      echo "Usage: ${SELF_NAME} {start|stop|status|restart}"
+      exit $ERROR
+esac
+exit $SUCCESS

@@ -1,0 +1,6 @@
+How to build com-vsftpd
+
+1. Build the binaries
+
+   > cd src
+   > make
